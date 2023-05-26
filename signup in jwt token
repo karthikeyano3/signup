@@ -1,0 +1,82 @@
+from flask import Flask,request
+from flask_restful import Resource,Api
+import pymongo,re
+import hashlib
+import uuid 
+from pymongo import MongoClient
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+
+
+app = Flask(__name__)
+api = Api(app)
+
+app.config["JWT_TOKEN_LOCATION"] =["headers"]
+app.config["JWT_SECRET_KEY"] ="super-secret"
+jwt =JWTManager(app)
+class Signup (Resource):
+    def post(self):
+        client = pymongo.MongoClient("mongodb://localhost:27017")
+        mydb = client ["database"]
+        mycol = mydb["signup"]
+        fname = request.form.get('firstname')
+        fname =str(fname)
+        if  len(fname)<3:
+            return{"result":"enter the more than three characters"}
+        lname = request.form.get('lastname')
+        lname =str(lname)
+        if len(lname)<1:
+            return {"result":"lastname  must be atleast one character"}
+        ph = request.form.get('phone number')
+        val = re.match(r"^(?:(?:\+|0{0,2})91(\s*[\ -]\s*)?|[0]?)?[1-9]\d{9}|(\d[ -]?){10}\d$",ph)
+        print(val)
+        if val==None:
+            return{"invalid":"phone number"}
+        email = request.form.get('email')
+        if "@"  not in email:         
+            return {"invalid":"email"}
+       
+        passw = request.form.get('password')
+        hashpass = hashlib.md5(passw.encode()).hexdigest()
+        conformpass = request.form.get('conform password')
+        if conformpass != passw:
+            return{"password":"does not match"}
+        conf_pass =hashlib.md5(conformpass.encode()).hexdigest()
+        user_id =uuid.uuid4().hex
+        signupdata= {"user_id":user_id,"firstname":fname,"lastname":lname,"phone number":ph,"email":email,"password" :hashpass,"conform password":conf_pass}
+        mycol.insert_one(signupdata)
+
+        return{"result":"Successfully signed up","user_id":user_id,"firstname":fname,"lastname":lname,"phone number":ph,"email":email,"password" :hashpass,"conform password":conf_pass}
+
+class  Login(Resource):
+    @jwt_required
+    def post(self):
+        client  = pymongo.MongoClient("mongodb://localhost:27017")
+        mydb = client["mydatabase"]
+        mycol = mydb["signup"]
+        emailid = request.form.get('user email')
+        userpass = request.form.get("user password")
+        hashpass2 = hashlib.md5(userpass.encode()).hexdigest()
+        myquery ={"email":emailid}
+        mydoc =mycol.find_one(myquery)
+        if mydoc==None:
+            return{"result":"email does not in database"}
+        else:
+            if mydoc["password"]==hashpass2:
+                return{"result":"login successfully"}
+            else:
+                return{"result":"enter the valid password"}
+    
+
+    def new_method(self, mycol, emailid, userpass, hashpass2):
+        logindata ={"user email":emailid,"user password":userpass}
+        mycol.insert_one(logindata)
+        return{"user email":emailid,"user password":hashpass2}
+
+api.add_resource(Signup,'/signup')
+api.add_resource(Login,'/login')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
